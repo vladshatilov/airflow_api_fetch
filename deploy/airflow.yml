@@ -1,0 +1,121 @@
+version: '3.8'
+
+x-airflow-env:
+  &airflow-env
+  PYTHONPATH: ${AIRFLOW_HOME}/src
+  PROJECT_HOST_FOLDER: ${PROJECT_HOST_FOLDER}
+
+  AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_WEB_SECRET_KEY}
+
+  AIRFLOW__LOGGING__LOGGING_LEVEL: ${AIRFLOW_LOGGING_LEVEL}
+  AIRFLOW__LOGGING__REMOTE_LOGGING: ${AIRFLOW_REMOTE_LOGGING}
+  AIRFLOW__LOGGING__REMOTE_LOG_CONN_ID: ${AIRFLOW_REMOTE_LOG_CONN_ID}
+
+  AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG: ${AIRFLOW_MAX_ACTIVE_RUNS_PER_DAG:-1}
+  AIRFLOW__CORE__EXECUTOR: ${AIRFLOW_EXECUTOR}
+  AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+  AIRFLOW__CORE__DAGS_FOLDER: ${AIRFLOW_HOME}/src
+  AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_DB_USER}:${AIRFLOW_DB_PWD}@${AIRFLOW_DB_HOST}:${AIRFLOW_DB_PORT}/${AIRFLOW_DB_SCHEMA}
+  AIRFLOW__CORE__DAGBAG_IMPORT_TIMEOUT: 10
+
+x-common-env:
+  &common-env
+  ENVIRONMENT: ${ENVIRONMENT:-local}
+
+x-airflow-common:
+  &airflow-common
+  build:
+    context: ..
+    dockerfile: ./deploy/Dockerfile
+  environment:
+    &airflow-common-env
+      <<: *airflow-env
+      <<: *common-env
+  user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-0}"
+  restart: always
+  networks:
+    airflow-etl:
+
+
+x-conn-env:
+  &conn-env
+  DWH_CONN_ID: ${DWH_CONN_ID:-dwh}
+  SCORE_API_CONN_ID: ${SCORE_API_CONN_ID:-live_score_api}
+
+  AIRFLOW_HOME: ${AIRFLOW_HOME}
+  AIRFLOW_DB_USER: ${AIRFLOW_DB_USER}
+  AIRFLOW_DB_PWD: ${AIRFLOW_DB_PWD}
+  AIRFLOW_DB_SCHEMA: ${AIRFLOW_DB_SCHEMA}
+  AIRFLOW_DB_HOST: ${AIRFLOW_DB_HOST}
+  AIRFLOW_DB_PORT: ${AIRFLOW_DB_PORT}
+
+  DWH_USER: ${DWH_USER}
+  DWH_PWD: ${DWH_PWD}
+  DWH_SCHEMA: ${DWH_SCHEMA}
+  DWH_HOST: ${DWH_HOST}
+  DWH_PORT: ${DWH_PORT}
+
+  SCORE_API_HOST: ${SCORE_API_HOST}
+  SCORE_API_USER: ${SCORE_API_USER}
+  SCORE_API_PWD: ${SCORE_API_PWD}
+
+networks:
+  airflow-etl:
+    name: airflow-etl-${COMPOSE_PROJECT_NAME}
+
+services:
+  dwh-db:
+    image: "postgres:11.5"
+    networks:
+      airflow-etl:
+        aliases:
+          - ${DWH_HOST}
+    environment:
+      <<: *conn-env
+      POSTGRES_USER: ${DWH_USER}
+      POSTGRES_PASSWORD: ${DWH_PWD}
+      POSTGRES_DB: ${DWH_SCHEMA}
+    ports:
+      - ${DWH_EXTERNAL_PORT}:${DWH_PORT}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+
+  airflow-db:
+    image: "postgres:11.5"
+    networks:
+      airflow-etl:
+        aliases:
+          - ${AIRFLOW_DB_HOST}
+    ports:
+      - ${AIRFLOW_DB_EXTERNAL_PORT}:${AIRFLOW_DB_PORT}
+    environment:
+      POSTGRES_USER: ${AIRFLOW_DB_USER}
+      POSTGRES_DB: ${AIRFLOW_DB_SCHEMA}
+      POSTGRES_PASSWORD: ${AIRFLOW_DB_PWD}
+
+
+  webserver:
+    <<: *airflow-common
+    ports:
+      - ${AIRFLOW_WEB_EXTERNAL_PORT}:8080
+    entrypoint: airflow webserver
+    volumes:
+      - ${PROJECT_HOST_FOLDER}/src:${AIRFLOW_HOME}/src
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 5
+
+  scheduler:
+    <<: *airflow-common
+    restart: always
+    entrypoint: airflow scheduler
+    volumes:
+      - ${PROJECT_HOST_FOLDER}/src:${AIRFLOW_HOME}/src
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
+      interval: 10s
+      timeout: 10s
+      retries: 5

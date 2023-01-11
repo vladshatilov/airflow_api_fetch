@@ -1,0 +1,21 @@
+.idea
+venv
+
+*.env
+*.pyc
+
+logs/*
+tmp/*
+!tmp/.gitkeep
+
+#MacOS index
+.DS_Store
+
+# Python cache
+__pycache__
+
+# Pytest cache
+.pytest_cache
+
+# Local tools
+deploy/data

@@ -1,0 +1,13 @@
+${DWH_CONN_ID}:
+  conn_type: postgres
+  host: ${DWH_HOST}
+  login: ${DWH_USER}
+  password: ${DWH_PWD}
+  port: ${DWH_PORT}
+  schema: ${DWH_SCHEMA}
+
+${SCORE_API_CONN_ID}:
+  conn_type: sqlite
+  host: ${SCORE_API_HOST}
+  login: ${SCORE_API_USER}
+  password: ${SCORE_API_PWD}
